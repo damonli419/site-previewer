@@ -132,9 +132,9 @@
             document.getElementById('previewFrame').style.display = 'block';
             try {
                 const zip = await JSZip.loadAsync(file); showLoading(40); const entries = Object.keys(zip.files).filter(name => !zip.files[name].dir);
-                let prefix = ''; if (entries.length > 0) { const parts = entries[0].split('/'); if (parts.length > 1) { const candidate = parts[0] + '/'; if (entries.every(e => e.startsWith(candidate))) prefix = candidate; } }
+                let prefix = ''; if (entries.length > 0) { const normalizedEntries = entries.map(e => e.replace(/\\/g, '/')); const parts = normalizedEntries[0].split('/'); if (parts.length > 1) { const candidate = parts[0] + '/'; if (normalizedEntries.every(e => e.startsWith(candidate))) prefix = candidate; } }
                 let processed = 0;
-                for (const filename of entries) { const cleanName = prefix ? filename.substring(prefix.length) : filename; if (!cleanName) continue; const blob = await zip.files[filename].async('blob'); const typedBlob = new Blob([blob], { type: getMimeType(cleanName) }); const url = URL.createObjectURL(typedBlob); currentFiles[cleanName] = { blob: typedBlob, url, size: blob.size }; currentBlobUrls[cleanName] = url; processed++; showLoading(40 + processed / entries.length * 50); }
+                for (const filename of entries) { const normalizedFilename = filename.replace(/\\/g, '/'); const normalizedPrefix = prefix.replace(/\\/g, '/'); const cleanName = normalizedPrefix ? normalizedFilename.substring(normalizedPrefix.length) : normalizedFilename; if (!cleanName) continue; const blob = await zip.files[filename].async('blob'); const typedBlob = new Blob([blob], { type: getMimeType(cleanName) }); const url = URL.createObjectURL(typedBlob); currentFiles[cleanName] = { blob: typedBlob, url, size: blob.size }; currentBlobUrls[cleanName] = url; processed++; showLoading(40 + processed / entries.length * 50); }
                 showLoading(100); setTimeout(() => showLoading(0), 500); uploadOverlay.classList.add('hidden'); document.getElementById('mainLayout').style.display = 'flex'; buildFileTree(); document.getElementById('fileCount').textContent = `${Object.keys(currentFiles).length} 个文件`;
                 if (isSourcePackage()) { showSourcePackageDiagnostic(); } else { const entryFile = findEntryFile(); if (entryFile) previewFile(entryFile); }
             } catch (err) { alert('解压失败：' + err.message); showLoading(0); }
@@ -142,7 +142,7 @@
         function getMimeType(filename) { const ext = filename.split('.').pop().toLowerCase(); const mimes = { html:'text/html',htm:'text/html',css:'text/css',js:'application/javascript',mjs:'application/javascript',json:'application/json',xml:'application/xml',svg:'image/svg+xml',png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',gif:'image/gif',webp:'image/webp',ico:'image/x-icon',woff:'font/woff',woff2:'font/woff2',ttf:'font/ttf',otf:'font/otf',mp4:'video/mp4',webm:'video/webm',mp3:'audio/mpeg',wav:'audio/wav',pdf:'application/pdf',txt:'text/plain',md:'text/plain' }; return mimes[ext] || 'application/octet-stream'; }
         function findEntryFile() { const priorities = ['dist/index.html','build/index.html','out/index.html','public/index.html','index.html','index.htm','home.html','main.html']; for (const p of priorities) if (currentFiles[p]) return p; for (const p of priorities) { const found = Object.keys(currentFiles).find(f => f.endsWith('/' + p)); if (found) return found; } return Object.keys(currentFiles).find(f => f.endsWith('.html') || f.endsWith('.htm')) || ''; }
         function isSourcePackage() {
-            const paths = Object.keys(currentFiles);
+            const paths = Object.keys(currentFiles).map(path => String(path).replace(/\\/g, '/'));
             const hasPackageManifest = paths.some(path => /(^|\/)package\.json$/i.test(path));
             const hasSourceFiles = paths.some(path => /(^|\/)(src|app)\/.*\.(tsx|ts|jsx|js)$/i.test(path));
             const hasBuildOutput = paths.some(path => /(^|\/)(dist|build|out)\/index\.html$/i.test(path));
