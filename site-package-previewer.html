@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>网站包预览器 - Site Package Previewer</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --primary: #6c5ce7; --primary-dark: #5a4bd1; --bg-dark: #0f0f1a;
+            --bg-card: #1a1a2e; --bg-hover: #252540; --text-primary: #e0e0e0;
+            --text-secondary: #a0a0b0; --border: #2a2a45; --success: #00cec9;
+            --warning: #fdcb6e; --error: #ff7675;
+        }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif; background: var(--bg-dark); color: var(--text-primary); min-height: 100vh; overflow: hidden; }
+        .header { background: var(--bg-card); border-bottom: 1px solid var(--border); padding: 12px 24px; display: flex; align-items: center; justify-content: space-between; height: 60px; position: relative; z-index: 100; }
+        .header-left { display: flex; align-items: center; gap: 16px; }
+        .logo { display: flex; align-items: center; gap: 10px; font-size: 18px; font-weight: 700; color: var(--primary); }
+        .logo svg { width: 28px; height: 28px; }
+        .header-actions { display: flex; align-items: center; gap: 12px; }
+        .device-switcher { display: flex; background: var(--bg-dark); border-radius: 8px; padding: 4px; gap: 2px; }
+        .device-btn { background: none; border: none; color: var(--text-secondary); padding: 6px 12px; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 6px; font-size: 13px; transition: all 0.2s; }
+        .device-btn:hover { color: var(--text-primary); background: var(--bg-hover); }
+        .device-btn.active { background: var(--primary); color: white; }
+        .device-btn svg { width: 16px; height: 16px; }
+        .upload-overlay { position: fixed; inset: 0; background: rgba(15, 15, 26, 0.95); display: flex; align-items: center; justify-content: center; z-index: 200; transition: opacity 0.3s, visibility 0.3s; }
+        .upload-overlay.hidden { opacity: 0; visibility: hidden; }
+        .upload-container { text-align: center; max-width: 560px; width: 100%; padding: 20px; }
+        .upload-icon { width: 80px; height: 80px; margin: 0 auto 24px; background: linear-gradient(135deg, var(--primary), #a29bfe); border-radius: 20px; display: flex; align-items: center; justify-content: center; animation: float 3s ease-in-out infinite; }
+        @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+        .upload-icon svg { width: 40px; height: 40px; color: white; }
+        .upload-title { font-size: 28px; font-weight: 700; margin-bottom: 12px; }
+        .upload-subtitle { color: var(--text-secondary); margin-bottom: 32px; font-size: 15px; line-height: 1.6; }
+        .drop-zone { border: 2px dashed var(--border); border-radius: 16px; padding: 48px 32px; cursor: pointer; transition: all 0.3s; background: var(--bg-card); }
+        .drop-zone:hover, .drop-zone.drag-over { border-color: var(--primary); background: rgba(108, 92, 231, 0.1); }
+        .drop-zone-text { font-size: 16px; margin-bottom: 8px; }
+        .drop-zone-hint { color: var(--text-secondary); font-size: 13px; }
+        .drop-zone-hint span { color: var(--primary); text-decoration: underline; cursor: pointer; }
+        .supported-formats { margin-top: 24px; display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+        .format-badge { background: var(--bg-card); border: 1px solid var(--border); padding: 6px 14px; border-radius: 20px; font-size: 12px; color: var(--text-secondary); }
+        .main-layout { display: flex; height: calc(100vh - 60px); }
+        .sidebar { width: 280px; background: var(--bg-card); border-right: 1px solid var(--border); display: flex; flex-direction: column; transition: width 0.3s; overflow: hidden; }
+        .sidebar.collapsed { width: 0; border-right: none; }
+        .sidebar-header { padding: 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+        .sidebar-title { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-secondary); }
+        .file-tree { flex: 1; overflow-y: auto; padding: 8px; }
+        .file-tree::-webkit-scrollbar { width: 6px; }
+        .file-tree::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+        .tree-item { display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 13px; color: var(--text-secondary); transition: all 0.15s; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .tree-item:hover { background: var(--bg-hover); color: var(--text-primary); }
+        .tree-item.active { background: rgba(108, 92, 231, 0.15); color: var(--primary); }
+        .tree-item.folder { font-weight: 600; }
+        .tree-item .indent { width: 16px; flex-shrink: 0; }
+        .tree-item svg { width: 16px; height: 16px; flex-shrink: 0; }
+        .file-icon { color: var(--text-secondary); } .file-icon.html { color: #e44d26; } .file-icon.css { color: #264de4; } .file-icon.js { color: #f7df1e; } .file-icon.img { color: var(--success); } .file-icon.folder { color: var(--warning); }
+        .preview-area { flex: 1; display: flex; flex-direction: column; background: #1e1e30; overflow: hidden; }
+        .preview-toolbar { display: flex; align-items: center; gap: 12px; padding: 8px 16px; background: var(--bg-card); border-bottom: 1px solid var(--border); }
+        .url-bar { flex: 1; display: flex; align-items: center; background: var(--bg-dark); border: 1px solid var(--border); border-radius: 8px; padding: 6px 12px; gap: 8px; }
+        .url-bar svg { width: 14px; height: 14px; color: var(--success); flex-shrink: 0; }
+        .url-bar input { flex: 1; background: none; border: none; color: var(--text-primary); font-size: 13px; outline: none; font-family: 'SF Mono', 'Fira Code', monospace; }
+        .toolbar-btn { background: none; border: 1px solid var(--border); color: var(--text-secondary); padding: 6px; border-radius: 6px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
+        .toolbar-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+        .toolbar-btn svg { width: 16px; height: 16px; }
+        .preview-frame-container { flex: 1; display: flex; align-items: center; justify-content: center; padding: 20px; overflow: auto; }
+        .preview-frame-wrapper { background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4); transition: width 0.3s, height 0.3s; position: relative; }
+        .preview-frame-wrapper.desktop { width: 100%; height: 100%; border-radius: 0; }
+        .preview-frame-wrapper.tablet { width: 768px; height: 1024px; max-height: 100%; border-radius: 16px; border: 4px solid #333; }
+        .preview-frame-wrapper.mobile { width: 375px; height: 812px; max-height: 100%; border-radius: 24px; border: 4px solid #333; }
+        .preview-iframe { width: 100%; height: 100%; border: none; background: white; }
+        .empty-preview { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--text-secondary); gap: 16px; }
+        .empty-preview svg { width: 64px; height: 64px; opacity: 0.3; }
+        .diagnostic-preview { max-width: 680px; margin: 32px; padding: 28px 32px; border: 1px solid #4a416f; border-radius: 16px; background: #17172a; color: #e0e0e0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; line-height: 1.7; }
+        .diagnostic-preview h2 { margin-bottom: 10px; color: #fdcb6e; font-size: 20px; }
+        .diagnostic-preview p { color: #b6b4c8; margin: 8px 0; }
+        .diagnostic-preview code { color: #a29bfe; background: #252540; border-radius: 5px; padding: 2px 6px; font-family: 'SF Mono', 'Fira Code', monospace; }
+        .diagnostic-preview ul { margin: 12px 0 0 20px; color: #b6b4c8; }
+        .diagnostic-preview .diagnostic-tip { margin-top: 18px; padding: 12px 14px; border-left: 3px solid var(--primary); background: rgba(108, 92, 231, 0.12); color: #d4d0ff; }
+        .loading-bar { height: 3px; background: var(--primary); position: absolute; top: 0; left: 0; border-radius: 0 3px 3px 0; transition: width 0.3s; z-index: 10; }
+        .status-bar { padding: 6px 16px; background: var(--bg-card); border-top: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; font-size: 12px; color: var(--text-secondary); }
+        .status-left { display: flex; align-items: center; gap: 16px; }
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--success); display: inline-block; margin-right: 6px; }
+        .btn-primary { background: var(--primary); color: white; border: none; padding: 8px 20px; border-radius: 8px; font-size: 14px; cursor: pointer; font-weight: 600; transition: background 0.2s; }
+        .btn-primary:hover { background: var(--primary-dark); }
+        .toggle-sidebar-btn { background: none; border: none; color: var(--text-secondary); cursor: pointer; padding: 4px; display: flex; }
+        @media (max-width: 768px) { .sidebar { position: absolute; z-index: 50; height: calc(100vh - 60px); } .device-switcher { display: none; } }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="header-left">
+            <div class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>SitePreview</div>
+            <button class="toggle-sidebar-btn" onclick="toggleSidebar()" title="切换侧边栏"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg></button>
+        </div>
+        <div class="device-switcher">
+            <button class="device-btn active" onclick="setDevice('desktop', this)" title="桌面"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>桌面</button>
+            <button class="device-btn" onclick="setDevice('tablet', this)" title="平板"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="12" y1="18" x2="12" y2="18"/></svg>平板</button>
+            <button class="device-btn" onclick="setDevice('mobile', this)" title="手机"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12" y2="18"/></svg>手机</button>
+        </div>
+        <div class="header-actions"><button class="btn-primary" onclick="showUpload()">📦 上传新包</button></div>
+    </header>
+    <div class="upload-overlay" id="uploadOverlay">
+        <div class="upload-container">
+            <div class="upload-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg></div>
+            <h1 class="upload-title">网站包预览器</h1>
+            <p class="upload-subtitle">上传您的网站压缩包（.zip），即可在线预览完整的静态网站。<br>支持 HTML、CSS、JavaScript、图片等资源文件。</p>
+            <div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()"><p class="drop-zone-text">🎯 拖拽 ZIP 文件到此处</p><p class="drop-zone-hint">或者 <span>点击浏览</span> 选择文件</p><input type="file" id="fileInput" accept=".zip" hidden></div>
+            <div class="supported-formats"><span class="format-badge">📄 HTML</span><span class="format-badge">🎨 CSS</span><span class="format-badge">⚡ JavaScript</span><span class="format-badge">🖼️ Images</span><span class="format-badge">📁 .zip</span></div>
+        </div>
+    </div>
+    <div class="main-layout" id="mainLayout" style="display: none;">
+        <aside class="sidebar" id="sidebar"><div class="sidebar-header"><span class="sidebar-title">📁 文件列表</span><span id="fileCount" style="font-size: 12px; color: var(--text-secondary);"></span></div><div class="file-tree" id="fileTree"></div></aside>
+        <div class="preview-area">
+            <div class="preview-toolbar"><button class="toolbar-btn" onclick="refreshPreview()" title="刷新"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></button><div class="url-bar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg><input type="text" id="urlBar" value="/" readonly></div><button class="toolbar-btn" onclick="openInNewTab()" title="新标签页打开"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></button></div>
+            <div class="preview-frame-container"><div class="preview-frame-wrapper desktop" id="previewWrapper"><div class="loading-bar" id="loadingBar" style="width: 0%;"></div><iframe class="preview-iframe" id="previewFrame" sandbox="allow-scripts allow-same-origin allow-modals allow-forms"></iframe><div class="empty-preview" id="emptyPreview"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg><p>从左侧选择一个 HTML 文件开始预览</p></div></div></div>
+            <div class="status-bar"><div class="status-left"><span><span class="status-dot"></span>就绪</span><span id="statusInfo">等待加载文件...</span></div><span id="statusSize"></span></div>
+        </div>
+    </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script>
+        let currentFiles = {}, currentBlobUrls = {}, currentEntryFile = '';
+        const dropZone = document.getElementById('dropZone'), fileInput = document.getElementById('fileInput'), uploadOverlay = document.getElementById('uploadOverlay');
+        dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+        dropZone.addEventListener('drop', e => { e.preventDefault(); dropZone.classList.remove('drag-over'); const file = e.dataTransfer.files[0]; if (file && file.name.endsWith('.zip')) handleZipFile(file); else alert('请上传 .zip 格式的文件！'); });
+        fileInput.addEventListener('change', e => { const file = e.target.files[0]; if (file) handleZipFile(file); });
+        document.addEventListener('dragover', e => e.preventDefault());
+        document.addEventListener('drop', e => { e.preventDefault(); const file = e.dataTransfer.files[0]; if (file && file.name.endsWith('.zip')) handleZipFile(file); });
+        async function handleZipFile(file) {
+            showLoading(10); Object.values(currentBlobUrls).forEach(url => URL.revokeObjectURL(url)); currentBlobUrls = {}; currentFiles = {};
+            const oldDiagnostic = document.querySelector('.diagnostic-preview');
+            if (oldDiagnostic) oldDiagnostic.remove();
+            document.getElementById('previewFrame').style.display = 'block';
+            try {
+                const zip = await JSZip.loadAsync(file); showLoading(40); const entries = Object.keys(zip.files).filter(name => !zip.files[name].dir);
+                let prefix = ''; if (entries.length > 0) { const parts = entries[0].split('/'); if (parts.length > 1) { const candidate = parts[0] + '/'; if (entries.every(e => e.startsWith(candidate))) prefix = candidate; } }
+                let processed = 0;
+                for (const filename of entries) { const cleanName = prefix ? filename.substring(prefix.length) : filename; if (!cleanName) continue; const blob = await zip.files[filename].async('blob'); const typedBlob = new Blob([blob], { type: getMimeType(cleanName) }); const url = URL.createObjectURL(typedBlob); currentFiles[cleanName] = { blob: typedBlob, url, size: blob.size }; currentBlobUrls[cleanName] = url; processed++; showLoading(40 + processed / entries.length * 50); }
+                showLoading(100); setTimeout(() => showLoading(0), 500); uploadOverlay.classList.add('hidden'); document.getElementById('mainLayout').style.display = 'flex'; buildFileTree(); document.getElementById('fileCount').textContent = `${Object.keys(currentFiles).length} 个文件`;
+                if (isSourcePackage()) { showSourcePackageDiagnostic(); } else { const entryFile = findEntryFile(); if (entryFile) previewFile(entryFile); }
+            } catch (err) { alert('解压失败：' + err.message); showLoading(0); }
+        }
+        function getMimeType(filename) { const ext = filename.split('.').pop().toLowerCase(); const mimes = { html:'text/html',htm:'text/html',css:'text/css',js:'application/javascript',mjs:'application/javascript',json:'application/json',xml:'application/xml',svg:'image/svg+xml',png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',gif:'image/gif',webp:'image/webp',ico:'image/x-icon',woff:'font/woff',woff2:'font/woff2',ttf:'font/ttf',otf:'font/otf',mp4:'video/mp4',webm:'video/webm',mp3:'audio/mpeg',wav:'audio/wav',pdf:'application/pdf',txt:'text/plain',md:'text/plain' }; return mimes[ext] || 'application/octet-stream'; }
+        function findEntryFile() { const priorities = ['dist/index.html','build/index.html','out/index.html','public/index.html','index.html','index.htm','home.html','main.html']; for (const p of priorities) if (currentFiles[p]) return p; for (const p of priorities) { const found = Object.keys(currentFiles).find(f => f.endsWith('/' + p)); if (found) return found; } return Object.keys(currentFiles).find(f => f.endsWith('.html') || f.endsWith('.htm')) || ''; }
+        function isSourcePackage() {
+            const paths = Object.keys(currentFiles);
+            const hasPackageManifest = paths.some(path => /(^|\/)package\.json$/i.test(path));
+            const hasSourceFiles = paths.some(path => /(^|\/)(src|app)\/.*\.(tsx|ts|jsx|js)$/i.test(path));
+            const hasBuildOutput = paths.some(path => /(^|\/)(dist|build|out)\/index\.html$/i.test(path));
+            return hasPackageManifest && hasSourceFiles && !hasBuildOutput;
+        }
+        function showSourcePackageDiagnostic() {
+            const frame = document.getElementById('previewFrame');
+            const empty = document.getElementById('emptyPreview');
+            empty.style.display = 'none';
+            const diagnostic = document.createElement('div');
+            diagnostic.className = 'diagnostic-preview';
+            diagnostic.innerHTML = `<h2>这是前端源码包，不能直接运行</h2><p>检测到此 ZIP 包包含 <code>package.json</code>、<code>src/*.tsx</code> 等源码文件。浏览器无法直接执行 TSX/JSX，因此会出现白屏。</p><ul><li>请先在项目中安装依赖并执行构建</li><li>然后重新上传包含 <code>dist/index.html</code>、<code>build/index.html</code> 或 <code>out/index.html</code> 的构建产物 ZIP</li></ul><div class="diagnostic-tip">如果你想预览当前源码，需要使用支持 Node.js/Vite 的开发环境启动项目，而不是直接打开 ZIP。</div>`;
+            frame.style.display = 'none';
+            document.getElementById('previewWrapper').appendChild(diagnostic);
+            document.getElementById('urlBar').value = '/(源码包)';
+            document.getElementById('statusInfo').textContent = '检测到未构建的前端源码包';
+            document.getElementById('statusSize').textContent = '';
+        }
+        function buildFileTree() { const tree = document.getElementById('fileTree'); tree.innerHTML = ''; const structure = {}; Object.keys(currentFiles).sort().forEach(path => { const parts = path.split('/'); let current = structure; parts.forEach((part,i) => { if (i === parts.length - 1) current[part] = path; else { if (!current[part]) current[part] = {}; current = current[part]; } }); }); renderTree(structure, tree, 0); }
+        function renderTree(obj, container, depth) { Object.keys(obj).forEach(key => { const value = obj[key], item = document.createElement('div'); item.className = 'tree-item'; const indent = '<span class="indent"></span>'.repeat(depth); if (typeof value === 'object') { item.classList.add('folder'); item.innerHTML = `${indent}<svg class="file-icon folder" viewBox="0 0 24 24" fill="currentColor"><path d="M10 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-8l-2-2z"/></svg> ${key}`; container.appendChild(item); const subContainer = document.createElement('div'); subContainer.className = 'folder-children'; let isOpen = true; item.addEventListener('click', () => { isOpen = !isOpen; subContainer.style.display = isOpen ? 'block' : 'none'; }); container.appendChild(subContainer); renderTree(value, subContainer, depth + 1); } else { const ext = key.split('.').pop().toLowerCase(); item.innerHTML = `${indent}<svg class="file-icon ${getFileIconClass(ext)}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">${getFileIcon(ext)}</svg> ${key}`; item.dataset.path = value; item.addEventListener('click', () => { document.querySelectorAll('.tree-item.active').forEach(el => el.classList.remove('active')); item.classList.add('active'); previewFile(value); }); container.appendChild(item); } }); }
+        function getFileIconClass(ext) { if (['html','htm'].includes(ext)) return 'html'; if (ext === 'css') return 'css'; if (['js','mjs'].includes(ext)) return 'js'; if (['png','jpg','jpeg','gif','svg','webp','ico'].includes(ext)) return 'img'; return ''; }
+        function getFileIcon(ext) { if (['html','htm'].includes(ext)) return '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>'; if (['png','jpg','jpeg','gif','svg','webp'].includes(ext)) return '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>'; return '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>'; }
+        async function previewFile(filepath) { const file = currentFiles[filepath]; if (!file) return; const oldDiagnostic = document.querySelector('.diagnostic-preview'); if (oldDiagnostic) oldDiagnostic.remove(); const frame = document.getElementById('previewFrame'); frame.style.display = 'block'; currentEntryFile = filepath; document.getElementById('urlBar').value = '/' + filepath; document.getElementById('emptyPreview').style.display = 'none'; if (isSourcePackage()) { showSourcePackageDiagnostic(); return; } const ext = filepath.split('.').pop().toLowerCase(); if (['html','htm'].includes(ext)) { const text = await file.blob.text(); const rewrittenHtml = rewriteResourceUrls(text, filepath); const blob = new Blob([rewrittenHtml], { type:'text/html' }); frame.src = URL.createObjectURL(blob); } else if (['png','jpg','jpeg','gif','svg','webp','ico'].includes(ext)) { const imgHtml = `<!DOCTYPE html><html><body style="margin:0;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#1e1e30;"><img src="${file.url}" style="max-width:100%;max-height:100vh;"/></body></html>`; frame.src = URL.createObjectURL(new Blob([imgHtml], {type:'text/html'})); } else { const textContent = await file.blob.text(); const escaped = textContent.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); const codeHtml = `<!DOCTYPE html><html><body style="margin:16px;background:#1e1e30;color:#e0e0e0;font-family:monospace;white-space:pre-wrap;font-size:14px;">${escaped}</body></html>`; frame.src = URL.createObjectURL(new Blob([codeHtml], {type:'text/html'})); } document.getElementById('statusInfo').textContent = filepath; document.getElementById('statusSize').textContent = formatSize(file.size); }
+        function rewriteResourceUrls(html, htmlFilePath) { const baseDir = htmlFilePath.includes('/') ? htmlFilePath.substring(0, htmlFilePath.lastIndexOf('/') + 1) : ''; html = html.replace(/(src|href|action)=["']([^"']+)["']/gi, (match, attr, url) => { if (url.startsWith('http') || url.startsWith('//') || url.startsWith('data:') || url.startsWith('#') || url.startsWith('mailto:')) return match; const resolved = resolveUrl(baseDir,url); return currentFiles[resolved] ? `${attr}="${currentFiles[resolved].url}"` : match; }); html = html.replace(/url\(["']?([^"')]+)["']?\)/gi, (match,url) => { if (url.startsWith('http') || url.startsWith('//') || url.startsWith('data:')) return match; const resolved = resolveUrl(baseDir,url); return currentFiles[resolved] ? `url("${currentFiles[resolved].url}")` : match; }); return html; }
+        function resolveUrl(base, relative) { if (relative.startsWith('/')) return relative.substring(1); const parts = (base + relative).split('/'), resolved = []; parts.forEach(part => { if (part === '..') resolved.pop(); else if (part !== '.' && part !== '') resolved.push(part); }); return resolved.join('/'); }
+        function setDevice(device, btn) { document.querySelectorAll('.device-btn').forEach(b => b.classList.remove('active')); btn.classList.add('active'); document.getElementById('previewWrapper').className = 'preview-frame-wrapper ' + device; }
+        function toggleSidebar() { document.getElementById('sidebar').classList.toggle('collapsed'); }
+        function showUpload() { uploadOverlay.classList.remove('hidden'); }
+        function refreshPreview() { if (currentEntryFile) previewFile(currentEntryFile); }
+        function openInNewTab() { if (currentEntryFile && currentFiles[currentEntryFile]) window.open(currentFiles[currentEntryFile].url, '_blank'); }
+        function showLoading(percent) { document.getElementById('loadingBar').style.width = percent + '%'; }
+        function formatSize(bytes) { if (bytes < 1024) return bytes + ' B'; if (bytes < 1024*1024) return (bytes/1024).toFixed(1) + ' KB'; return (bytes/(1024*1024)).toFixed(1) + ' MB'; }
+    </script>
+</body>
+</html>
